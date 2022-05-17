@@ -10,6 +10,7 @@ CREATE TABLE Student (
 );
 
 CREATE TABLE Report (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
     chat_id INTEGER NOT NULL,
     lname VARCHAR(255),
     topic VARCHAR(255),
