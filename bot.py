@@ -1,4 +1,3 @@
-from turtle import up
 from telegram import (KeyboardButton, ReplyKeyboardMarkup, ReplyKeyboardRemove, Update,
                       ParseMode,
                       InlineKeyboardMarkup,
@@ -11,8 +10,6 @@ from telegram.ext import (Updater,
                           CallbackQueryHandler,
                           ConversationHandler,)
 import sqlite3
-
-from datetime import datetime, timedelta
 
 
 welcome_text = "به خفن ترین ربات کنکوری خوش اومدی🥳\n\nبرای این که بتونیم بهت خدمات متناسب با رشتت بدیم لطفا یکم بیشتر از خودت به ما بگو🤓"
@@ -248,12 +245,6 @@ def get_phone(update: Update, context: CallbackContext):
     return start(update, context)
 
 
-def cancel(update: Update, context: CallbackContext):
-    """Cancels and ends the conversation."""
-    update.message.reply_text(text='با موفقیت کنسل شد!')
-    return ConversationHandler.END
-
-
 def get_info(update):
     chat_id = update.message.chat_id
 
@@ -335,6 +326,12 @@ def Inline_buttons(update: Update, context: CallbackContext):
         return PAYE
 
 
+def cancel(update: Update, context: CallbackContext):
+    """Cancels and ends the conversation."""
+    update.message.reply_text(text='با موفقیت کنسل شد!')
+    return ConversationHandler.END
+
+
 def main():
     updater = Updater(
         "5346115877:AAHpOA_IRVBUcSl7bgBWf5we32kaqx7w-GI", use_context=True)
@@ -359,7 +356,6 @@ def main():
             NAME: [MessageHandler(Filters.text & ~Filters.command, change_name)],
             RESHTE: [MessageHandler(Filters.text & ~Filters.command, change_reshte)],
             PAYE: [MessageHandler(Filters.text & ~Filters.command, change_paye)],
-            PHONE: [MessageHandler(Filters.contact, get_phone)],
         },
         fallbacks=[CommandHandler('cancel', cancel)]
     )
