@@ -1,18 +1,12 @@
-from telegram import (KeyboardButton, ReplyKeyboardMarkup, ReplyKeyboardRemove, Update,
-                      ParseMode,
-                      InlineKeyboardMarkup,
-                      InlineKeyboardButton)
-from telegram.ext import (Updater,
-                          CommandHandler,
-                          MessageHandler,
-                          Filters,
-                          CallbackContext,
-                          CallbackQueryHandler,
-                          ConversationHandler,)
+import re
+from telegram import (KeyboardButton, ReplyKeyboardMarkup,
+                      Update, InlineKeyboardMarkup, InlineKeyboardButton)
+from telegram.ext import (Updater, CommandHandler, MessageHandler,
+                          Filters, CallbackContext, CallbackQueryHandler, ConversationHandler,)
 import sqlite3
 import datetime
 
-
+# TEXTS
 welcome_text = "به خفن ترین ربات کنکوری خوش اومدی🥳\n\nبرای این که بتونیم بهت خدمات متناسب با رشتت بدیم لطفا یکم بیشتر از خودت به ما بگو🤓"
 get_name_text = "لطفا نام و نام خانوادگی قشنگت رو برای ما تایپ کن و بفرست👇🏻"
 get_reshte_text = "لطفا آخرین رشته تحصیلیت رو انتخاب کن👇🏻"
@@ -27,19 +21,22 @@ change_paye_text = "پایه ت با موفقیت تغییر کرد!"
 change_reshte_text = "رشته ت با موفقیت تغییر کرد!"
 unknown_text = "ای وای😱\nاین پیام برای ربات ما قابل فهم نیست.😕\n\nاگر اشکالی وجود داره و با فشردن دستور /start حل نشد ، به ما از طریق آیدی @mhhasani خبر بده."
 cancel_text = "با موفقیت کنسل شد!"
-add_activity_text = "🔺برای افزودن فعالیت درسی جدید نام درس و عنوان را به شکل زیر وارد کنید:\n\nنام درس\nعنوان "
+add_task_text = "🔺برای افزودن فعالیت درسی جدید نام درس و عنوان را به شکل زیر وارد کنید:\n\nنام درس\nعنوان "
 added_activity_text = "✅فعالیت با موفقیت افزوده شد!\nبیشینه زمان ممکن برای هر فعالیت ۲ ساعت می باشد.\nهر موقع فعالیتت تموم شد میتونی روی دکمه ' اتمام فعالیت ' کلیک کنی👇"
 backtomain_text = "به صفحه اصلی برگشتی!"
 end_task_text = "اتمام این فعالیت ثبت شد!"
-
+task_not_ended_text = "❌ شما فعالیتی دارید که به پایان نرسیده است!\nابتدا آن را به پایان رسانده و دوباره تلاش کنید..."
+no_task_text = "فعالیتی وجود ندارد!"
+# BUTTONS
 all_reshte = ['ریاضی', 'تجربی', 'انسانی', 'هنر']
 all_paye = ['دهم', 'یازدهم', 'دوازدهم', 'فارغ التحصیل']
-MAIN_BUTTUN = ['مشاهده اطلاعات فردی',
-               'مشاهده گزارش ۳ روز اخیر', 'افزودن فعالیت']
-
-main_keyboard = [[KeyboardButton(MAIN_BUTTUN[0])],
-                 [KeyboardButton(MAIN_BUTTUN[1])],
-                 [KeyboardButton(MAIN_BUTTUN[2])]]
+MAIN_BUTTON = ['مشاهده اطلاعات فردی', 'مشاهده گزارش ۳ روز اخیر',
+               'افزودن فعالیت', 'مشاهده فعالیت جاری']
+# KEYBOARDS
+main_keyboard = [[KeyboardButton(MAIN_BUTTON[0])],
+                 [KeyboardButton(MAIN_BUTTON[1])],
+                 [KeyboardButton(MAIN_BUTTON[2])],
+                 [KeyboardButton(MAIN_BUTTON[3])]]
 start_reply_markup = ReplyKeyboardMarkup(main_keyboard, one_time_keyboard=True)
 
 reshte_keyboard = [[KeyboardButton(all_reshte[0])], [KeyboardButton(all_reshte[1])], [
@@ -51,7 +48,11 @@ paye_keyboard = [[KeyboardButton(all_paye[0])], [KeyboardButton(all_paye[1])], [
     KeyboardButton(all_paye[2])], [KeyboardButton(all_paye[3])]]
 paye_reply_markup = ReplyKeyboardMarkup(paye_keyboard, one_time_keyboard=True)
 
-#######
+phone_keyboard = [
+    [KeyboardButton(text="اشتراک گذاری شماره تلفن", request_contact=True)]]
+phone_reply_markup = ReplyKeyboardMarkup(
+    phone_keyboard, one_time_keyboard=True)
+# INLINE KEYBOARDS
 keyboard = [
     [InlineKeyboardButton(
         "ویرایش نام و نام خانوادگی", callback_data='change_name')],
@@ -60,15 +61,15 @@ keyboard = [
         InlineKeyboardButton("ویرایش پایه", callback_data='change_paye')],
 ]
 change_reply_markup = InlineKeyboardMarkup(keyboard)
-
+# INFO STEPS
 NOT_FOUND = -1
 NAME = 1
 RESHTE = 2
 PAYE = 3
 PHONE = 4
 SUCCESSFUL = 5
-#######
-ADD_ACTIVITY = 0
+# TASKS STEPS
+ADD_TASK = 0
 
 
 def do_sql_query(query, values, is_select_query=False):
@@ -224,7 +225,8 @@ def get_paye(update: Update, context: CallbackContext):
     values = [paye, str(chat_id)]
     do_sql_query(query, values)
 
-    update.message.reply_text(text=get_phone_text)
+    update.message.reply_text(
+        text=get_phone_text, reply_markup=phone_reply_markup)
 
     return PHONE
 
@@ -285,13 +287,13 @@ def end_time_keyboard(rep_id):
     return InlineKeyboardMarkup(keyboard)
 
 
-def add_activity(update: Update, context: CallbackContext):
+def add_task(update: Update, context: CallbackContext):
     chat_id = update.message.chat_id
     les_top = update.message.text.split("\n")
 
     if len(les_top) != 2:
-        update.message.reply_text(text=add_activity_text)
-        return ADD_ACTIVITY
+        update.message.reply_text(text=add_task_text)
+        return ADD_TASK
 
     lname = les_top[0]
     topic = les_top[1]
@@ -307,24 +309,52 @@ def add_activity(update: Update, context: CallbackContext):
 
     update.message.reply_text(text=added_activity_text,
                               reply_markup=end_time_reply_markup)
-    update.message.reply_text(text=backtomain_text,
-                              reply_markup=start_reply_markup)
     return ConversationHandler.END
+
+
+def view_current_task(update: Update):
+    chat_id = update.message.chat_id
+
+    now_time = datetime.datetime.now()
+
+    query = "SELECT * FROM Report WHERE chat_id = ? AND end_time IS NULL"
+    Reports = do_sql_query(query, [chat_id], True)
+
+    if Reports:
+        for report in Reports:
+            time = now_time - datetime.datetime.strptime(
+                report[4], '%Y-%m-%d %H:%M:%S')
+            minute = time.seconds // 60
+            text = f"⭕️ شما مبحث {report[3]} از درس {report[2]} را در تاریخ آغاز کرده اید و {minute} دقیقه از شروع آن گذشته است.\nبیشینه زمان ممکن برای هر فعالیت ۲ ساعت می باشد.\nهر موقع فعالیتت تموم شد میتونی روی دکمه ' اتمام فعالیت ' کلیک کنی👇"
+            update.message.reply_text(
+                text=text, reply_markup=end_time_keyboard(report[0]))
+    else:
+        update.message.reply_text(text=no_task_text)
 
 
 def message_handler(update: Update, context: CallbackContext):
     chat_id = update.message.chat_id
     text = update.message.text
 
-    if text not in MAIN_BUTTUN:
+    if text not in MAIN_BUTTON:
         update.message.reply_text(text=unknown_text)
 
-    elif text == MAIN_BUTTUN[0]:
+    elif text == MAIN_BUTTON[0]:
         get_info(update)
 
-    elif text == MAIN_BUTTUN[2]:
-        update.message.reply_text(text=add_activity_text)
-        return ADD_ACTIVITY
+    elif text == MAIN_BUTTON[2]:
+        query = "SELECT * FROM Report WHERE chat_id = ? AND end_time IS NULL"
+        Reports = do_sql_query(query, [chat_id], True)
+
+        if Reports:
+            update.message.reply_text(text=task_not_ended_text)
+            return ConversationHandler.END
+
+        update.message.reply_text(text=add_task_text)
+        return ADD_TASK
+
+    elif text == MAIN_BUTTON[3]:
+        view_current_task(update)
 
     return ConversationHandler.END
 
@@ -422,7 +452,7 @@ def main():
         entry_points=[MessageHandler(
             Filters.text & ~Filters.command, message_handler)],
         states={
-            ADD_ACTIVITY: [MessageHandler(Filters.text & ~Filters.command, add_activity)],
+            ADD_TASK: [MessageHandler(Filters.text & ~Filters.command, add_task)],
         },
         fallbacks=[CommandHandler('cancel', cancel)]
     )
