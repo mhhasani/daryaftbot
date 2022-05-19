@@ -1,11 +1,12 @@
-import re
+from khayyam import *
 from telegram import (KeyboardButton, ReplyKeyboardMarkup,
                       Update, InlineKeyboardMarkup, InlineKeyboardButton)
 from telegram.ext import (Updater, CommandHandler, MessageHandler,
                           Filters, CallbackContext, CallbackQueryHandler, ConversationHandler,)
 import sqlite3
-import datetime
+from datetime import *
 
+CHANNEl = "@daryaft_mhhasani"
 # TEXTS
 welcome_text = "به خفن ترین ربات کنکوری خوش اومدی🥳\n\nبرای این که بتونیم بهت خدمات متناسب با رشتت بدیم لطفا یکم بیشتر از خودت به ما بگو🤓"
 get_name_text = "لطفا نام و نام خانوادگی قشنگت رو برای ما تایپ کن و بفرست👇🏻"
@@ -27,6 +28,16 @@ backtomain_text = "به صفحه اصلی برگشتی!"
 end_task_text = "اتمام این فعالیت ثبت شد!"
 task_not_ended_text = "❌ شما فعالیتی دارید که به پایان نرسیده است!\nابتدا آن را به پایان رسانده و دوباره تلاش کنید..."
 no_task_text = "فعالیتی وجود ندارد!"
+task_already_ended_text = "این فعالیت قبلا به پایان رسیده است!"
+
+
+def force_end_task_text(report):
+    mabhas = report[3]
+    dars = report[2]
+    text = f"🔺 از شروع فعالیت مبحث {mabhas} از درس {dars} بیشتر از دو ساعت گذشته...\nما اتمام این فعالیت رو برات ثبت کردیم :)"
+    return text
+
+
 # BUTTONS
 all_reshte = ['ریاضی', 'تجربی', 'انسانی', 'هنر']
 all_paye = ['دهم', 'یازدهم', 'دوازدهم', 'فارغ التحصیل']
@@ -287,6 +298,104 @@ def end_time_keyboard(rep_id):
     return InlineKeyboardMarkup(keyboard)
 
 
+def todays_task_text(chat_id, day=0):
+    sql = "SELECT * FROM Student WHERE chat_id = ?"
+    student = do_sql_query(sql, [chat_id], True)[0]
+
+    now = JalaliDate.today() + timedelta(hours=4.5)
+    sql = "SELECT R.* FROM Student S JOIN Report R ON S.chat_id = R.chat_id WHERE S.chat_id = ?"
+    reports = do_sql_query(sql, [chat_id], True)
+    now = now - timedelta(days=day)
+    text = f"📆 تاریخ : {now.strftime('%d / %m / %Y')}\n"
+    name = student[2].replace(' ', "_")
+    paye = student[3].replace(' ', "_")
+    reshte = student[4]
+    sum_time = 0
+    text += f"👤 #{name} ➖ #{paye} ➖ #{reshte}"
+    text += "\n\n➖➖➖➖➖\n👓 برنامه مطالعاتی امروز :\n\n"
+    for report in reports:
+        start_time = JalaliDate(datetime.strptime(
+            report[4], '%Y-%m-%d %H:%M:%S'))
+        if start_time.strftime('%Y-%m-%d') == now.strftime('%Y-%m-%d'):
+            text += f"🔸 نام درس: {report[2]} \n"
+            text += f"🔹 نام مبحث: {report[3]} \n"
+            st = datetime.strptime(report[4], '%Y-%m-%d %H:%M:%S')
+            if report[5]:
+                et = datetime.strptime(report[5], '%Y-%m-%d %H:%M:%S')
+                time = (et-st).seconds // 60
+                text += f"🕒 مدت مطالعه: {time} دقیقه"
+                sum_time += time
+            else:
+                text += '🕒 در حال مطالعه...'
+            text += "\n\n"
+    hour = sum_time // 60
+    minute = sum_time - hour * 60
+    if hour != 0:
+        if minute != 0:
+            sum_time = f"{hour} ساعت و {minute} دقیقه"
+        else:
+            sum_time = f"{hour} ساعت"
+    else:
+        sum_time = f"{minute} دقیقه"
+    text += f"➖➖➖➖➖\n🕰 مجموع ساعات مطالعه امروز : {sum_time}"
+
+    return text
+
+
+def update_channel(chat_id=None, update=None, query=None, context=None):
+    new_message = False
+    today = JalaliDate.today() + timedelta(hours=4.5)
+    today = JalaliDate(today).strftime('%Y-%m-%d')
+    sql = "SELECT * FROM Student WHERE chat_id = ?"
+    student = do_sql_query(sql, [chat_id], True)
+    user_date = student[0][7]
+    if user_date:
+        if today != user_date:
+            new_message = True
+    else:
+        new_message = True
+
+    user_date = today
+
+    if new_message:
+        if update:
+            message_id = update.message.bot.send_message(
+                text=todays_task_text(chat_id),
+                chat_id=CHANNEl,
+            ).message_id
+        elif query:
+            message_id = query.message.bot.send_message(
+                text=todays_task_text(chat_id),
+                chat_id=CHANNEl,
+            ).message_id
+        elif context:
+            message_id = context.bot.send_message(
+                text=todays_task_text(chat_id),
+                chat_id=CHANNEl,
+            ).message_id
+        sql = "UPDATE Student SET (day,message_id) = (?,?) WHERE chat_id = ?"
+        do_sql_query(sql, [user_date, message_id, chat_id])
+    else:
+        message_id = student[0][6]
+        if update:
+            update.message.bot.edit_message_text(
+                text=todays_task_text(chat_id),
+                chat_id=CHANNEl,
+                message_id=message_id)
+        elif query:
+            query.message.bot.edit_message_text(
+                text=todays_task_text(chat_id),
+                chat_id=CHANNEl,
+                message_id=message_id
+            )
+        elif context:
+            context.bot.edit_message_text(
+                text=todays_task_text(chat_id),
+                chat_id=CHANNEl,
+                message_id=message_id
+            )
+
+
 def add_task(update: Update, context: CallbackContext):
     chat_id = update.message.chat_id
     les_top = update.message.text.split("\n")
@@ -297,7 +406,7 @@ def add_task(update: Update, context: CallbackContext):
 
     lname = les_top[0]
     topic = les_top[1]
-    start_time = datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+    start_time = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
 
     query = "INSERT INTO Report (chat_id,lname,topic,start_time) VALUES (?,?,?,?)"
     values = [chat_id, lname, topic, start_time]
@@ -309,27 +418,55 @@ def add_task(update: Update, context: CallbackContext):
 
     update.message.reply_text(text=added_activity_text,
                               reply_markup=end_time_reply_markup)
+    update_channel(chat_id, update=update)
     return ConversationHandler.END
 
 
 def view_current_task(update: Update):
     chat_id = update.message.chat_id
 
-    now_time = datetime.datetime.now()
+    now_time = datetime.now()
 
     query = "SELECT * FROM Report WHERE chat_id = ? AND end_time IS NULL"
     Reports = do_sql_query(query, [chat_id], True)
 
     if Reports:
         for report in Reports:
-            time = now_time - datetime.datetime.strptime(
+            start_time = datetime.strptime(
                 report[4], '%Y-%m-%d %H:%M:%S')
+            time = now_time - start_time
             minute = time.seconds // 60
-            text = f"⭕️ شما مبحث {report[3]} از درس {report[2]} را در تاریخ آغاز کرده اید و {minute} دقیقه از شروع آن گذشته است.\nبیشینه زمان ممکن برای هر فعالیت ۲ ساعت می باشد.\nهر موقع فعالیتت تموم شد میتونی روی دکمه ' اتمام فعالیت ' کلیک کنی👇"
+            hour = (JalaliDatetime(start_time) +
+                    timedelta(hours=4.5)).strftime('%H:%M')
+            text = f"⭕️ شما مبحث {report[3]} از درس {report[2]} را در ساعت {hour} آغاز کرده اید و {minute} دقیقه از شروع آن گذشته است.\nبیشینه زمان ممکن برای هر فعالیت ۲ ساعت می باشد.\nهر موقع فعالیتت تموم شد میتونی روی دکمه ' اتمام فعالیت ' کلیک کنی👇"
             update.message.reply_text(
                 text=text, reply_markup=end_time_keyboard(report[0]))
     else:
         update.message.reply_text(text=no_task_text)
+
+
+def check_end_task(context: CallbackContext):
+    now_time = datetime.now()
+
+    query = "SELECT * FROM Report WHERE end_time IS NULL"
+    Reports = do_sql_query(query, [], True)
+
+    if Reports:
+        for report in Reports:
+            rep_id = report[0]
+            chat_id = report[1]
+            start_time = datetime.strptime(
+                report[4], '%Y-%m-%d %H:%M:%S')
+            time = now_time - start_time
+            minute = time.seconds // 60
+            if minute >= 120:
+                end_time = start_time + timedelta(hours=2)
+                end_time = end_time.strftime('%Y-%m-%d %H:%M:%S')
+                query = "UPDATE Report SET end_time = ? WHERE id = ?"
+                do_sql_query(query, [end_time, rep_id])
+                context.bot.send_message(
+                    text=force_end_task_text(report), chat_id=chat_id)
+                update_channel(chat_id, context=context)
 
 
 def message_handler(update: Update, context: CallbackContext):
@@ -356,6 +493,10 @@ def message_handler(update: Update, context: CallbackContext):
     elif text == MAIN_BUTTON[3]:
         view_current_task(update)
 
+    elif text == MAIN_BUTTON[1]:
+        update.message.reply_text(text=todays_task_text(chat_id, day=2))
+        update.message.reply_text(text=todays_task_text(chat_id, day=1))
+        update.message.reply_text(text=todays_task_text(chat_id, day=0))
     return ConversationHandler.END
 
 
@@ -401,14 +542,22 @@ def Inline_buttons(update: Update, context: CallbackContext):
 
     elif query.data.split()[0] == 'end_time':
         id = query.data.split()[1]
-        end_time = datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+        now = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
 
-        sql = "UPDATE Report SET end_time = ? WHERE id = ?"
-        values = [end_time, id]
-        do_sql_query(sql, values)
+        sql = "SELECT end_time FROM Report WHERE id = ?"
+        values = [id]
+        end_time = do_sql_query(sql, values, True)
+        if not end_time[0][0]:
+            sql = "UPDATE Report SET end_time = ? WHERE id = ?"
+            values = [now, id]
+            do_sql_query(sql, values)
 
-        query.message.bot.edit_message_text(
-            text=end_task_text, message_id=message_id, chat_id=chat_id)
+            query.message.bot.edit_message_text(
+                text=end_task_text, message_id=message_id, chat_id=chat_id)
+            update_channel(chat_id, query=query)
+        else:
+            query.message.bot.edit_message_text(
+                text=task_already_ended_text, message_id=message_id, chat_id=chat_id)
 
         query.answer(text="اتمام فعالیت")
 
@@ -424,6 +573,8 @@ def main():
         "5346115877:AAHpOA_IRVBUcSl7bgBWf5we32kaqx7w-GI", use_context=True)
 
     dispatcher = updater.dispatcher
+    j = updater.job_queue
+    j.run_repeating(check_end_task, interval=300, first=1)
 
     get_name_handler = ConversationHandler(
         entry_points=[CommandHandler("start", start)],
